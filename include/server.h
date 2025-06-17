@@ -34,9 +34,18 @@ public:
         m_acceptor.async_accept(
             [this](std::error_code ec, asio::ip::tcp::socket newConnection)
             {
-                m_clients.push_back(std::make_shared<Connection>(m_context, std::move(newConnection), readQueue, m_clientID));
                 m_clientID++;
                 std::cout << "Client Accepted\n";
+
+                if (newConnection.is_open())
+                {
+                    std::cout << "New Connection is Open\n";
+                    m_clients.push_back(std::make_shared<Connection>(m_context, std::move(newConnection), readQueue, m_clientID));
+                }
+                else
+                {
+                    std::cout << "New connection not Open\n";
+                }
                 Accept();
             });
     }

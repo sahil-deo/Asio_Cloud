@@ -22,7 +22,10 @@ int main()
                       { io.run(); });
         message m;
 
-        client.Connect("127.0.0.1", "5555");
+        std::string ip = "127.0.0.1";
+        // std::cout << "Enter Server IP: ";
+        // std::getline(std::cin, ip);
+        client.Connect(ip, "5555");
 
         while (true)
         {
@@ -47,6 +50,7 @@ int main()
                 client.SendString(line);
             }
         }
+        t.join();
     }
     catch (std::error_code ec)
     {

@@ -10,6 +10,7 @@
 #include <fstream>
 #include <mutex>
 #include <condition_variable>
+#include <chrono>
 
 class Client
 {
@@ -17,7 +18,6 @@ public:
     Client(asio::io_context &context) : m_context(context), m_socket(context), m_resolver(context)
     {
         readQueue = std::make_shared<TsQueue>();
-        Receive();
     }
     ~Client()
     {
@@ -28,17 +28,34 @@ public:
         try
         {
             auto endpoints = m_resolver.resolve(ip, port);
+            /*
             asio::async_connect(m_socket, endpoints, [this, ip, port](std::error_code ec, asio::ip::tcp::endpoint e)
-                                {
+            {
                 if (!ec)
                 {
-                    m_connection = std::make_shared<Connection>(m_context, std::move(m_socket), readQueue);
-                    std::cout << "Connected to Server";
+                m_connection = std::make_shared<Connection>(m_context, std::move(m_socket), readQueue);
+                std::cout << "Connected to Server";
+                Receive();
+
                 }
                 else
                 {
-                    std::cout << "Connection Error";
-                } });
+                std::cout << "Connection Error";
+            } });
+                */
+
+            std::error_code ec;
+            asio::connect(m_socket, endpoints, ec);
+            if (!ec)
+            {
+                m_connection = std::make_shared<Connection>(m_context, std::move(m_socket), readQueue);
+                std::cout << "Connected to Server";
+                Receive();
+            }
+            else
+            {
+                std::cout << "Connection Error";
+            }
         }
         catch (std::exception e)
         {
@@ -48,6 +65,11 @@ public:
 
     void Receive()
     {
+        if (!m_connection)
+        {
+            std::cout << "Cannot start receiving - no connection established\n";
+            return;
+        }
         std::thread([this, &readQueue = this->readQueue]()
                     {
                         while(true){
@@ -98,6 +120,11 @@ public:
 
     void Send(message msg)
     {
+        if (!m_connection)
+        {
+            std::cout << "No connection established\n";
+            return;
+        }
 
         if (m_connection->Connected())
         {
@@ -126,6 +153,11 @@ public:
 
     void SendFile(std::string filePath)
     {
+        if (!m_connection)
+        {
+            std::cout << "No connection established\n";
+            return;
+        }
         if (!m_connection->Connected())
         {
             std::cout << "Server not connected\n";
@@ -233,12 +265,15 @@ public:
 
     void Disconnect()
     {
-        m_connection->Disconnect();
+        if (m_connection)
+        {
+            m_connection->Disconnect();
+        }
     }
 
     bool Connected()
     {
-        return m_connection->Connected();
+        return m_connection && m_connection->Connected();
     }
 
     bool checkAck(std::chrono::seconds timeout)
@@ -272,6 +307,6 @@ private:
     asio::ip::tcp::socket m_socket;
     std::shared_ptr<TsQueue> readQueue;
     asio::io_context &m_context;
-    bool m_ack;
+    bool m_ack = false; // CHANGE: Initialize m_ack to false
     std::ofstream m_file;
 };

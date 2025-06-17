@@ -17,7 +17,10 @@ public:
         m_readQueue = std::move(_readQ);
         std::cout << "Connection Created\n";
         writing = false;
-        Receive();
+        if (m_socket.is_open())
+        {
+            Receive();
+        }
     }
 
     Connection(asio::io_context &io, asio::ip::tcp::socket newSocket, std::shared_ptr<TsQueue> _readQ, int _id)
@@ -29,11 +32,19 @@ public:
         m_readQueue = std::move(_readQ);
         std::cout << "Connection Created\n";
         writing = false;
-        Receive();
+        if (m_socket.is_open())
+        {
+            Receive();
+        }
     }
 
     void Send(message msg)
     {
+        if (!m_socket.is_open())
+        {
+            std::cout << "Cannot send - socket is closed\n";
+            return;
+        }
         bool writingInProgress = !m_writeQueue.empty();
         m_writeQueue.push_back(std::move(msg));
         std::cout << "Send Called\n";
@@ -48,6 +59,12 @@ public:
 
     void SendHeader()
     {
+        if (!m_socket.is_open())
+        {
+            std::cout << "Cannot send header - socket is closed\n";
+            writing = false;
+            return;
+        }
         if (m_writeQueue.empty())
         {
             writing = false;
@@ -56,7 +73,6 @@ public:
 
         std::cout << "Sending Header\n";
 
-        // FIX: Use shared_ptr to avoid copying large message objects
         auto msg = std::make_shared<message>(m_writeQueue.pop_front());
 
         asio::async_write(m_socket, asio::buffer(&msg->m_header, sizeof(msg->m_header)),
@@ -71,12 +87,19 @@ public:
                               {
                                   std::cout << "Error at Sending Header: " << ec.message() << "\n";
                                   writing = false;
+                                  Disconnect();
                               }
                           });
     }
 
     void SendMessage(std::shared_ptr<message> msg)
     {
+        if (!m_socket.is_open())
+        {
+            std::cout << "Cannot send message - socket is closed\n";
+            writing = false;
+            return;
+        }
         std::cout << "Sending Message Body, size: " << msg->m_data.size() << "\n";
 
         if (msg->m_data.empty())
@@ -119,11 +142,21 @@ public:
 
     void Receive()
     {
+        if (!m_socket.is_open())
+        {
+            std::cout << "Cannot start receiving - socket is closed\n";
+            return;
+        }
         ReceiveHeader();
     }
 
     void ReceiveHeader()
     {
+        if (!m_socket.is_open())
+        {
+            std::cout << "Cannot receive header - socket is closed\n";
+            return;
+        }
         auto msg = std::make_shared<message>();
         asio::async_read(m_socket, asio::buffer(&msg->m_header, sizeof(msg->m_header)),
                          [this, msg](std::error_code ec, size_t bytes_received)
@@ -155,12 +188,18 @@ public:
                              else
                              {
                                  std::cout << "Error receiving header: " << ec.message() << "\n";
+                                 Disconnect();
                              }
                          });
     }
 
     void ReceiveMessage(std::shared_ptr<message> msg)
     {
+        if (!m_socket.is_open())
+        {
+            std::cout << "Cannot receive message - socket is closed\n";
+            return;
+        }
         msg->m_data.resize(msg->m_header.m_size);
         asio::async_read(m_socket, asio::buffer(msg->m_data.data(), msg->m_data.size()),
                          [this, msg](std::error_code ec, size_t bytes_received)
@@ -175,6 +214,7 @@ public:
                              else
                              {
                                  std::cout << "Error receiving message body: " << ec.message() << "\n";
+                                 Disconnect();
                              }
                          });
     }
@@ -184,6 +224,8 @@ public:
         if (m_socket.is_open())
         {
             std::error_code ec;
+            m_socket.shutdown(asio::ip::tcp::socket::shutdown_both, ec);
+
             m_socket.close(ec);
             if (ec)
             {
@@ -194,7 +236,13 @@ public:
 
     bool Connected()
     {
-        return m_socket.is_open();
+        if (!m_socket.is_open())
+        {
+            return false;
+        }
+        std::error_code ec;
+        m_socket.remote_endpoint(ec);
+        return !ec;
     }
 
     asio::ip::tcp::endpoint Get_Endpoint()
@@ -213,5 +261,5 @@ private:
     std::shared_ptr<TsQueue> m_readQueue;
     TsQueue m_writeQueue;
     bool writing;
-    int m_connectionid;
+    int m_connectionid = 0;
 };
