@@ -18,14 +18,14 @@ int main()
         std::string line;
         asio::io_context io;
         Client client(io);
-        std::thread t([&io]()
-                      { io.run(); });
         message m;
 
-        std::string ip = "127.0.0.1";
-        // std::cout << "Enter Server IP: ";
-        // std::getline(std::cin, ip);
+        std::string ip = "";
+        std::cout << "Enter Server IP: ";
+        std::getline(std::cin, ip);
         client.Connect(ip, "5555");
+        std::thread t([&io]()
+                      { io.run(); });
 
         while (true)
         {
