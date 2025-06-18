@@ -14,5 +14,6 @@ ${CMAKE_SOURCE_DIR}/include
 target_include_directories(client PRIVATE 
 ${CMAKE_SOURCE_DIR}/include
 )
-
-add_definitions(-D_WIN32_WINNT=0x0A00)  # Targeting Windows 10
+if(WIN32)
+    add_definitions(-D_WIN32_WINNT=0x0A00)  # Targeting Windows 10
+endif()
