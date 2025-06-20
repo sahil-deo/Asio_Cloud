@@ -145,9 +145,11 @@ public:
         std::string message = "";
         for (file f : m_fileCache)
         {
-            std::cout << f.name << ":"
-                      << f.size << "\n";
-            message.append(f.name + ":" + std::to_string(f.size) + "\n");
+            if (std::filesystem::is_regular_file(f.path)){
+                std::cout << "IsRegularFile\n";
+                std::cout << f.name << ":" << f.size;
+                message.append(f.name + ":" + std::to_string(f.size) + "\n");
+            }
         }
         // 5. Return Data
         msg.m_header.m_type = 3;
@@ -290,11 +292,16 @@ public:
             tempFile.path = path;
             tempFile.name = path.path().filename().string();
             tempFile.extention = path.path().extension().string();
-            tempFile.size = path.file_size();
+            
+            if(std::filesystem::is_regular_file(path)){
+                tempFile.size = path.file_size();
+            }else{
+                tempFile.size = 0;
+            }
+            m_fileCache.push_back(tempFile);
 
             // store all file objects in the fileCache vector
 
-            m_fileCache.push_back(tempFile);
         }
     }
 
