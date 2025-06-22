@@ -26,6 +26,8 @@ public:
         std::cout << "Server Started\n";
         Accept();
         ReceiveMessage();
+        ProcessSend();
+        SendMessageThread();
     }
     void CloseServer() {}
 
@@ -118,17 +120,22 @@ public:
                                 SendAck(msg);
 
                             }else if(messageType == 3){ //Message Message
-                                std::string message(msg.m_data.data(), msg.m_header.m_size); 
-                                if (message == "getdata"){
-                                    SendAvailableFiles(msg);
-                                }else if (message.length() > 4 && message.substr(0, 4) == "get "){
-                                // Fixed: Extract filename properly - remove "get " prefix
-                                std::string fileName = message.substr(4); 
-                                std::cout << "File requested: '" << fileName << "'\n";
-                                SendFile(msg);
-                                }else{
-                                    std::cout << message << "\n";
-                                }                     
+
+
+                                m_processQueue.push_back(msg);
+                                std::cout << "Sent to Process Queue\n";
+
+                                // std::string message(msg.m_data.data(), msg.m_header.m_size); 
+                                // if (message == "getdata"){
+                                //     SendAvailableFiles(msg);
+                                // }else if (message.length() > 4 && message.substr(0, 4) == "get "){
+                                // // Fixed: Extract filename properly - remove "get " prefix
+                                // std::string fileName = message.substr(4); 
+                                // std::cout << "File requested: '" << fileName << "'\n";
+                                // SendFile(msg);
+                                // }else{
+                                //     std::cout << message << "\n";
+                                // }                     
                             }else if(messageType == 4){
                                 setAck();
                             }
@@ -136,12 +143,73 @@ public:
             .detach();
     }
 
-    void SendAvailableFiles(message receivedMsg)
+    void ProcessSend(){
+        std::thread([this, &m_messageList = this->m_messageList, &m_nameList = this->m_nameList, &m_chunkList = this->m_chunkList](){
+
+            while(true){
+                message rcvdMsg = m_processQueue.pop_front();
+
+                std::shared_ptr<connectionFile> msgcf = std::make_shared<connectionFile>();
+                message msg;
+                
+                std::string messageString(rcvdMsg.m_data.data(), rcvdMsg.m_header.m_size);
+
+                if(messageString == "getdata"){
+
+                    messageString = GetAvailableFiles();
+                    msg.m_data.assign(messageString.begin(), messageString.end());
+                    msg.m_header.m_size = messageString.size();
+                    msgcf->m_connection = rcvdMsg.m_header.m_connection;
+                    msgcf->m_message = msg;
+
+                    m_messageList.push_back(msgcf);
+                    sahil
+                
+                }
+
+
+                // std::string message(msg.m_data.data(), msg.m_header.m_size); 
+                // if (message == "getdata"){
+                //     SendAvailableFiles(msg);
+                // }else if (message.length() > 4 && message.substr(0, 4) == "get "){
+                // // Fixed: Extract filename properly - remove "get " prefix
+                // std::string fileName = message.substr(4); 
+                // std::cout << "File requested: '" << fileName << "'\n";
+                // SendFile(msg);
+                // }else{
+                //     std::cout << message << "\n";
+                // }                  
+
+                
+            }
+
+        }).detach();
+    }
+
+    void SendMessageThread(){
+        std::thread([this, &m_messageList = this->m_messageList, &m_nameList = this->m_nameList, &m_chunkList = this->m_chunkList](){
+            while(true){
+                if(!m_messageList.empty()){
+                    clientFiles cf = m_messageList.pop_front();
+                    SendMessageToClient(cf->m_connection, cf->m_message);
+                }
+
+                if(!m_nameList.empty()){
+
+                }
+
+                if(!m_chunkList.empty()){
+
+                }
+            }
+        }).detach();
+    }
+
+    std::string GetAvailableFiles()
     {
         std::cout << "Available Files Requested:\n";
         // 1. Get Available Files and Folders
         updateFileCache();
-        message msg;
         std::string message = "";
         for (file f : m_fileCache)
         {
@@ -151,13 +219,12 @@ public:
                 message.append(f.name + ":" + std::to_string(f.size) + "\n");
             }
         }
-        // 5. Return Data
-        msg.m_header.m_type = 3;
-        msg.m_header.m_size = message.size();
 
-        msg.m_data = std::vector(message.begin(), message.end());
+        return message;
 
-        SendMessageToClient(receivedMsg.m_header.m_connection, msg);
+        //msg.m_data = std::vector(message.begin(), message.end());
+
+        //SendMessageToClient(receivedMsg.m_header.m_connection, msg);
     }
 
     void SendFile(message receivedMsg)
@@ -235,9 +302,9 @@ public:
             SendMessageToClient(receivedMsg.m_header.m_connection, msg);
 
             // Small delay between chunks to prevent overwhelming
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            // std::this_thread::sleep_for(std::chrono::milliseconds(1));
 
-            /*
+            
             if (checkAck(std::chrono::seconds(20)))
             {
                 falseAck();
@@ -249,7 +316,7 @@ public:
                 fileToSend.close();
                 return;
             }
-             */
+             
         }
 
         fileToSend.close();
@@ -339,7 +406,8 @@ public:
     std::condition_variable cv;
     bool m_ack;
 
-    List<message> m_messageList;
-    List<message> m_nameList;
-    List<connectionFile> m_chunkList;
+    List<std::shared_ptr<connectionFile>> m_messageList;
+    List<std::shared_ptr<connectionFile>> m_nameList;
+    List<std::shared_ptr<connectionFile>> m_chunkList;
+    TsQueue m_processQueue;
 };
