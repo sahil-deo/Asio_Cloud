@@ -147,6 +147,7 @@ public:
         std::thread([this, &m_messageList = this->m_messageList, &m_nameList = this->m_nameList, &m_chunkList = this->m_chunkList](){
 
             while(true){
+
                 message rcvdMsg = m_processQueue.pop_front();
 
                 std::shared_ptr<connectionFile> msgcf = std::make_shared<connectionFile>();
@@ -159,11 +160,12 @@ public:
                     messageString = GetAvailableFiles();
                     msg.m_data.assign(messageString.begin(), messageString.end());
                     msg.m_header.m_size = messageString.size();
+                    msg.m_header.m_type = 3;
                     msgcf->m_connection = rcvdMsg.m_header.m_connection;
                     msgcf->m_message = msg;
 
+
                     m_messageList.push_back(msgcf);
-                    sahil
                 
                 }
 
@@ -190,7 +192,7 @@ public:
         std::thread([this, &m_messageList = this->m_messageList, &m_nameList = this->m_nameList, &m_chunkList = this->m_chunkList](){
             while(true){
                 if(!m_messageList.empty()){
-                    clientFiles cf = m_messageList.pop_front();
+                    auto cf = m_messageList.pop_front();
                     SendMessageToClient(cf->m_connection, cf->m_message);
                 }
 

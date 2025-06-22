@@ -45,6 +45,7 @@ public:
                 */
 
             std::error_code ec;
+
             asio::connect(m_socket, endpoints, ec);
             if (!ec)
             {
