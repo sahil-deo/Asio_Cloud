@@ -144,7 +144,7 @@ public:
     }
 
     void ProcessSend(){
-        std::thread([this, &m_messageList = this->m_messageList, &m_nameList = this->m_nameList, &m_chunkList = this->m_chunkList](){
+        std::thread([this, &m_messageList = this->m_messageList, &m_nameList = this->m_nameList, &m_chunkList = this->m_fileList](){
 
             while(true){
 
@@ -155,18 +155,87 @@ public:
                 
                 std::string messageString(rcvdMsg.m_data.data(), rcvdMsg.m_header.m_size);
 
+                
+                msgcf->m_connection = rcvdMsg.m_header.m_connection;
+
+
                 if(messageString == "getdata"){
 
                     messageString = GetAvailableFiles();
                     msg.m_data.assign(messageString.begin(), messageString.end());
                     msg.m_header.m_size = messageString.size();
                     msg.m_header.m_type = 3;
-                    msgcf->m_connection = rcvdMsg.m_header.m_connection;
                     msgcf->m_message = msg;
 
 
                     m_messageList.push_back(msgcf);
                 
+                }else if(messageString.length() > 4 && messageString.substr(0,4) == "get "){
+
+                    //First Add File name to its queue
+                    std::string fileName = messageString.substr(4);
+                    std::cout << "File Requested: " << fileName << "\n";
+                    
+                    std::filesystem::path filePath;
+
+                    for (file f : m_fileCache)
+                    {
+                        if (f.name == fileName)
+                        {
+                            filePath = f.path;
+                            break;
+                        }
+                    }
+
+                    if (filePath.string() == ""){
+                        //Create Message for No File Exist
+
+                        //Add that sendMessage Queue
+
+                        continue;
+                    }
+
+                    std::cout << "---\nFile to be sent: " << fileName << "\n";
+
+                    msg.m_header.m_type = 1;
+                    msg.m_header.m_size = fileName.size();
+
+                    msg.m_data.resize(msg.m_header.m_size);
+                    msg.m_data.assign(fileName.begin(), fileName.end());
+
+                    msgcf->m_message = msg;
+
+                    //Added to Send Name Queue
+                    m_nameList.push_back(msgcf);
+
+
+
+
+                    // std::ifstream fileToSend(filePath, std::ios_base::binary);
+                    // if (!fileToSend.is_open())
+                    // {
+                    //     std::cout << "Failed to open file: " << filePath << "\n";
+                    //     return;
+                    // }
+
+                    // std::cout << "File Opened: " << filePath << "\n";
+
+                    // // std::string fileName = std::filesystem::path(filePath).filename().string();
+                    // std::cout << "Sending filename: " << fileName << " (size: " << fileName.size() << ")\n";
+
+
+                    // SendName(fileName, rcvdMsg.m_header.m_connection);
+
+
+                    //Open File and add it to its queue
+
+                    msgcf = std::make_shared<connectionFile>();
+                    msgcf->m_connection = rcvdMsg.m_header.m_connection;
+                    msgcf->m_file = std::ifstream(filePath, std::ios_base::binary);
+
+                    m_fileList.push_back(msgcf);
+
+
                 }
 
 
@@ -189,19 +258,85 @@ public:
     }
 
     void SendMessageThread(){
-        std::thread([this, &m_messageList = this->m_messageList, &m_nameList = this->m_nameList, &m_chunkList = this->m_chunkList](){
+        std::thread([this, &m_messageList = this->m_messageList, &m_nameList = this->m_nameList, &m_chunkList = this->m_fileList](){
             while(true){
                 if(!m_messageList.empty()){
+                    std::cout << "Sending Message\n";
                     auto cf = m_messageList.pop_front();
                     SendMessageToClient(cf->m_connection, cf->m_message);
                 }
-
+                
                 if(!m_nameList.empty()){
+                    std::cout << "Sending Name\n";
+                    auto cf = m_nameList.pop_front();
 
+                    std::cout << "CF INFO: MESSAGE: " << cf->m_message.m_data.data() << "\n Size: " << cf->m_message.m_header.m_size << "\n";
+                    SendMessageToClient(cf->m_connection, cf->m_message);
                 }
+                
+                if(!m_fileList.empty()){
+                    std::cout << "Sending Files\n";
+                    for(int i = 0; i < m_fileList.size(); i++){
+                        auto connfile = m_fileList.get_element(i);
+                        std::ifstream &fileToSend = connfile->m_file;
 
-                if(!m_chunkList.empty()){
+                        if (!fileToSend.is_open())
+                        {
+                            //Send Error Code Message of Type 5
+                            return;
+                        }
 
+                        // Prepare chunk message template
+                        message msg;
+                        msg.m_header.m_type = 2;           // chunk type
+                        msg.m_header.m_last_chunk = false; // Initialize properly
+
+                        const size_t CHUNK_SIZE = 100000;
+                        std::vector<char> buffer(CHUNK_SIZE);
+
+                        int chunkCount = 0;
+                        if (fileToSend.read(buffer.data(), CHUNK_SIZE) || fileToSend.gcount() > 0)
+                        {
+                            chunkCount++;
+                            size_t bytesRead = static_cast<size_t>(fileToSend.gcount());
+
+                            std::cout << "Sending chunk" << ", size: " << bytesRead << "\n";
+
+                            // Clear and prepare message for this chunk
+                            msg.m_data.clear();
+                            msg.m_data.assign(buffer.begin(), buffer.begin() + bytesRead);
+
+                            msg.m_header.m_size = bytesRead;
+
+                            // Check if this is the last chunk
+                            if (bytesRead < CHUNK_SIZE || fileToSend.eof())
+                            {
+                                msg.m_header.m_last_chunk = true;
+                                std::cout << "This is the last chunk\n";
+                            }
+                            else
+                            {
+                                msg.m_header.m_last_chunk = false;
+                            }
+
+                            SendMessageToClient(connfile->m_connection, msg);
+                            
+                            if (checkAck(std::chrono::seconds(20)))
+                            {
+                                falseAck();
+                            }
+                            else
+                            {
+                                std::cout << "Enable to receive Acknoledgement\n";
+                                std::cout << "Send Aborted\n";
+                                fileToSend.close();
+
+                                //send the type 5 error message
+                                return;
+                            }
+                            
+                        }
+                    }
                 }
             }
         }).detach();
@@ -410,6 +545,6 @@ public:
 
     List<std::shared_ptr<connectionFile>> m_messageList;
     List<std::shared_ptr<connectionFile>> m_nameList;
-    List<std::shared_ptr<connectionFile>> m_chunkList;
+    List<std::shared_ptr<connectionFile>> m_fileList;
     TsQueue m_processQueue;
 };
