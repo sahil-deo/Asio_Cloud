@@ -137,7 +137,7 @@ public:
                                 //     std::cout << message << "\n";
                                 // }                     
                             }else if(messageType == 4){
-                                setAck();
+                                clientAck[msg.m_header.m_connection] = true;
                             }
                         } })
             .detach();
@@ -274,15 +274,24 @@ public:
                     SendMessageToClient(cf->m_connection, cf->m_message);
                 }
                 
-                if(!m_fileList.empty()){
+
+                if (!m_fileList.empty()) {
                     std::cout << "Sending Files\n";
-                    for(int i = 0; i < m_fileList.size(); i++){
+                    for (int i = 0; i < m_fileList.size(); /* manual increment */) {
+
                         auto connfile = m_fileList.get_element(i);
+
+                        if (clientAck[connfile->m_connection] == false) {
+                            i++;
+                            continue;
+                        }
+
+                        clientAck[connfile->m_connection] = false;
+
                         std::ifstream &fileToSend = connfile->m_file;
 
-                        if (!fileToSend.is_open())
-                        {
-                            //Send Error Code Message of Type 5
+                        if (!fileToSend.is_open()) {
+                            // Send Error Code Message of Type 5
                             return;
                         }
 
@@ -295,12 +304,11 @@ public:
                         std::vector<char> buffer(CHUNK_SIZE);
 
                         int chunkCount = 0;
-                        if (fileToSend.read(buffer.data(), CHUNK_SIZE) || fileToSend.gcount() > 0)
-                        {
+                        if (fileToSend.read(buffer.data(), CHUNK_SIZE) || fileToSend.gcount() > 0) {
                             chunkCount++;
                             size_t bytesRead = static_cast<size_t>(fileToSend.gcount());
 
-                            std::cout << "Sending chunk" << ", size: " << bytesRead << "\n";
+                            std::cout << "Sending chunk, size: " << bytesRead << "\n";
 
                             // Clear and prepare message for this chunk
                             msg.m_data.clear();
@@ -309,35 +317,24 @@ public:
                             msg.m_header.m_size = bytesRead;
 
                             // Check if this is the last chunk
-                            if (bytesRead < CHUNK_SIZE || fileToSend.eof())
-                            {
+                            if (bytesRead < CHUNK_SIZE || fileToSend.eof()) {
                                 msg.m_header.m_last_chunk = true;
                                 std::cout << "This is the last chunk\n";
                             }
-                            else
-                            {
-                                msg.m_header.m_last_chunk = false;
-                            }
 
                             SendMessageToClient(connfile->m_connection, msg);
-                            
-                            if (checkAck(std::chrono::seconds(20)))
-                            {
-                                falseAck();
-                            }
-                            else
-                            {
-                                std::cout << "Enable to receive Acknoledgement\n";
-                                std::cout << "Send Aborted\n";
-                                fileToSend.close();
 
-                                //send the type 5 error message
-                                return;
+                            //  remove file if last chunk sent
+                            if (msg.m_header.m_last_chunk) {
+                                fileToSend.close();
+                                m_fileList.pop_element(i); //  remove from list
+                                std::cout << "File is Popoed" << "\n";
+                                continue;             //  don't increment i; list has shifted
                             }
-                            
                         }
+                        ++i; //  manual increment
                     }
-                }
+                }   
             }
         }).detach();
     }
@@ -538,6 +535,7 @@ public:
     asio::io_context &m_context;
     std::shared_ptr<TsQueue> readQueue = std::make_shared<TsQueue>();
     std::unordered_map<int, std::ofstream> clientFiles;
+    std::unordered_map<std::shared_ptr<Connection>, bool> clientAck;
     int m_clientID;
     std::mutex mtx;
     std::condition_variable cv;

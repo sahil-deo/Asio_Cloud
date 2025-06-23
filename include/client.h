@@ -86,6 +86,8 @@ public:
                                 //receive name
                                 std::string fileName(msg.m_data.data(), msg.m_header.m_size);
                                 m_file = std::ofstream(fileName, std::ios::binary);
+                                SendAck(msg);
+
 
                             }else if (messageType == 2){
                                 //receive file chunk
