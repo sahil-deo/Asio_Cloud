@@ -279,7 +279,16 @@ public:
                     std::cout << "Sending Files\n";
                     for (int i = 0; i < m_fileList.size(); /* manual increment */) {
 
+                        
+
                         auto connfile = m_fileList.get_element(i);
+
+                        if(!connfile->m_connection->Connected()){
+                            connfile->m_file.close();
+                            m_fileList.pop_element(i); //  remove from list
+                            std::cout << "File is Popped" << "\n";
+                            continue;  
+                        }
 
                         if (clientAck[connfile->m_connection] == false) {
                             i++;
