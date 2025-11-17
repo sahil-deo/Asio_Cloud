@@ -14,10 +14,9 @@ performance, concurrency, and clean backend architecture.
 ## Features
 
 -   Multi-client support using Asio TCP networking
--   Thread-per-client handling
+-   Queuing for clients
 -   File and folder uploads
 -   Metadata: size, duration, timestamps
--   Authentication via password
 -   Detailed logging
 -   CMake build system
 -   Pure C++
@@ -27,7 +26,7 @@ performance, concurrency, and clean backend architecture.
 ### Server
 
 -   Accepts multiple clients
--   Thread-per-client model
+-   Queues for client uploads and downloads
 -   Saves incoming files
 -   Logs events
 
@@ -36,15 +35,6 @@ performance, concurrency, and clean backend architecture.
 -   Connect using server IP + password
 -   Sends metadata + file payload
 -   Displays transfer status
-
-### Protocol Flow
-
-Client → Connect\
-Client → Send password\
-Server → Accept/Reject\
-Client → Send metadata\
-Client → Send file/folder data\
-Server → Save + Log
 
 ## Getting Started
 
@@ -86,40 +76,3 @@ Client:
 -   Enter IP + password
 -   Select file/folder
 -   Send
-
-## Design Notes
-
-### Concurrency
-
--   Uses Asio for socket I/O
--   Thread-per-client for simplicity
-
-### File Transfer
-
--   Custom lightweight protocol
--   Metadata header + payload
-
-### Logging
-
--   Connection events
--   Transfer durations
--   File sizes
-
-## Limitations
-
--   No download support yet
--   No image preview
--   No encryption
--   No versioning
-
-## Future Work
-
--   Add downloads
--   Add preview system
--   Move to fully async model
--   Add TLS
--   Add syncing
-
-## License
-
-MIT License
